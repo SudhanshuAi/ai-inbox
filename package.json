@@ -3,14 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
     "dev:api": "npm run dev --workspace=@ai-inbox/api",
     "dev:web": "npm run dev --workspace=@ai-inbox/web",
     "dev": "concurrently -k -n API,WEB -c indigo,cyan \"npm:dev:api\" \"npm:dev:web\"",
-    "build": "npm run build --workspaces --if-present",
+    "build:contracts": "npm run build --workspace=@ai-inbox/contracts",
+    "build:api": "npm run build --workspace=@ai-inbox/api",
+    "build:web": "npm run build --workspace=@ai-inbox/web",
+    "build": "npm run build:contracts && npm run build:api && npm run build:web",
     "test": "npm run test --workspaces --if-present"
   },
   "devDependencies": {
