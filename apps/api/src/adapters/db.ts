@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { config } from '../config/index.js';
 import { logger } from '../config/logger.js';
 
@@ -43,9 +44,24 @@ function runMigrations(db: DatabaseSyncInstance): void {
     );
   `);
 
-  const migrationsDir = path.resolve(process.cwd(), 'migrations');
-  if (!fs.existsSync(migrationsDir)) {
-    logger.warn({ event: 'migrations_dir_missing', path: migrationsDir });
+  let currentDir = '';
+  try {
+    currentDir = path.dirname(fileURLToPath(import.meta.url));
+  } catch {
+    currentDir = process.cwd();
+  }
+
+  const candidates = [
+    path.resolve(process.cwd(), 'apps/api/migrations'),
+    path.resolve(process.cwd(), 'migrations'),
+    path.resolve(currentDir, '../../migrations'),
+    path.resolve(currentDir, '../migrations'),
+  ];
+
+  const migrationsDir = candidates.find((p) => fs.existsSync(p));
+
+  if (!migrationsDir) {
+    logger.warn({ event: 'migrations_dir_missing', candidates });
     return;
   }
 

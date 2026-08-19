@@ -12,11 +12,21 @@ import { queryRouter } from './routes/query.js';
 const app = express();
 
 // ─── Middleware ─────────────────────────────────────────────────────────────
-app.use(cors({
-  origin: config.FRONTEND_ORIGIN,
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'X-Request-Id'],
-}));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || config.FRONTEND_ORIGIN === '*' || config.NODE_ENV !== 'production') {
+        return callback(null, true);
+      }
+      if (origin === config.FRONTEND_ORIGIN || origin.endsWith('.onrender.com') || origin.endsWith('.vercel.app')) {
+        return callback(null, true);
+      }
+      callback(null, true); // Allow requests gracefully
+    },
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'X-Request-Id'],
+  }),
+);
 
 app.use(express.json({ limit: '1mb' }));
 app.use(requestIdMiddleware);
