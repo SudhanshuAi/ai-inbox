@@ -28,8 +28,9 @@ services:
       sizeGB: 1
 
   # ── 2. Frontend React / Vite Static Site (Free Tier) ────────────────────────
-  - type: static
+  - type: web
     name: ai-knowledge-inbox-web
+    env: static
     rootDir: .
     buildCommand: npm install && npm run build
     staticPublishPath: apps/web/dist
