@@ -22,7 +22,7 @@ export const api = {
   ingest: (body: IngestRequest) =>
     request<IngestResponse>('/ingest', { method: 'POST', body: JSON.stringify(body) }),
 
-  getItems: () => request<ItemsResponse>('/items'),
+  getItems: () => request<ItemsResponse>('/items', { cache: 'no-store' }),
 
   query: (body: QueryRequest) =>
     request<QueryResponse>('/query', { method: 'POST', body: JSON.stringify(body) }),

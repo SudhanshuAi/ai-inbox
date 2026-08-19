@@ -4,7 +4,7 @@ import { ApiError } from '@ai-inbox/contracts';
 
 type Mode = 'note' | 'url';
 
-export function IngestPanel() {
+export function IngestPanel({ onSuccess }: { onSuccess?: () => void }) {
   const [mode, setMode] = useState<Mode>('note');
   const [noteContent, setNoteContent] = useState('');
   const [noteTitle, setNoteTitle] = useState('');
@@ -28,6 +28,7 @@ export function IngestPanel() {
             setSuccessMsg(`"${data.item.title}" saved and indexed successfully!`);
             setNoteContent('');
             setNoteTitle('');
+            setTimeout(() => onSuccess?.(), 1200);
           },
         },
       );
@@ -38,6 +39,7 @@ export function IngestPanel() {
           onSuccess: (data) => {
             setSuccessMsg(`"${data.item.title}" fetched and indexed!`);
             setUrlInput('');
+            setTimeout(() => onSuccess?.(), 1200);
           },
         },
       );
@@ -47,12 +49,7 @@ export function IngestPanel() {
   const isValid = mode === 'note' ? noteContent.trim().length > 0 : urlInput.trim().length > 0;
 
   return (
-    <div className="panel">
-      <div className="panel-header">
-        <div className="panel-icon">📥</div>
-        <span className="panel-title">Add to Knowledge Base</span>
-      </div>
-      <div className="panel-body">
+    <div>
         {/* Mode Tabs */}
         <div className="tab-list" role="tablist" aria-label="Ingestion mode">
           <button
@@ -116,7 +113,7 @@ export function IngestPanel() {
                 required
                 disabled={isPending}
               />
-              <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '5px' }}>
+              <p className="field-hint">
                 The server will fetch and extract readable text from this page.
               </p>
             </div>
@@ -146,7 +143,7 @@ export function IngestPanel() {
           <button
             type="submit"
             className="btn btn-primary btn-full"
-            style={{ marginTop: '14px' }}
+            style={{ marginTop: '16px' }}
             disabled={isPending || !isValid}
             aria-busy={isPending}
           >
@@ -160,7 +157,6 @@ export function IngestPanel() {
             )}
           </button>
         </form>
-      </div>
     </div>
   );
 }

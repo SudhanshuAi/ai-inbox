@@ -42,6 +42,7 @@ export interface ItemSummary {
   sourceUrl: string | null;
   title: string;
   preview: string;
+  rawContent?: string;
   status: ItemStatus;
   errorMessage: string | null;
   chunkCount: number;

@@ -14,6 +14,7 @@ function toSummary(item: Item): ItemSummary {
     sourceUrl: item.sourceUrl,
     title: item.title,
     preview,
+    rawContent: item.rawContent,
     status: item.status,
     errorMessage: item.errorMessage,
     chunkCount: item.status === 'ready' ? getChunkCountForItem(item.id) : 0,

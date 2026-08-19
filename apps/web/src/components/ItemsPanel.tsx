@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useItems } from '../hooks/useApi.js';
 import { ItemSummary } from '@ai-inbox/contracts';
 
@@ -10,45 +11,129 @@ function formatDate(iso: string): string {
   });
 }
 
+function SkeletonCard() {
+  return (
+    <div className="skeleton-card" aria-hidden="true">
+      <div className="skeleton-line w-1-2" style={{ marginBottom: '8px' }} />
+      <div className="skeleton-line w-3-4" />
+      <div className="skeleton-line w-1-3" style={{ marginTop: '10px' }} />
+    </div>
+  );
+}
+
 function StatusBadge({ status }: { status: ItemSummary['status'] }) {
   const map = {
-    ready: { cls: 'status-ready', icon: '●', label: 'Ready' },
-    processing: { cls: 'status-processing', icon: '◌', label: 'Indexing…' },
-    failed: { cls: 'status-failed', icon: '✕', label: 'Failed' },
+    ready: { cls: 'status-ready', label: 'Ready' },
+    processing: { cls: 'status-processing', label: 'Indexing…' },
+    failed: { cls: 'status-failed', label: 'Failed' },
   };
-  const { cls, icon, label } = map[status];
+  const { cls, label } = map[status];
   return (
     <span className={`item-status ${cls}`} aria-label={`Status: ${label}`}>
-      {icon} {label}
+      {label}
     </span>
   );
 }
 
-function ItemCard({ item }: { item: ItemSummary }) {
+function NoteModal({ item, onClose }: { item: ItemSummary; onClose: () => void }) {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const textContent = item.rawContent || item.preview;
+
+  return (
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label={item.title}>
+      <div className="modal-card animate-in" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="modal-header-left">
+            <span className={`item-type-badge ${item.sourceType === 'note' ? 'badge-note' : 'badge-url'}`}>
+              {item.sourceType === 'note' ? 'Note' : 'URL'}
+            </span>
+            <h3 className="modal-title">{item.title}</h3>
+          </div>
+          <button className="modal-close" onClick={onClose} aria-label="Close modal">
+            ✕
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <div className="modal-text-box">
+            {textContent}
+          </div>
+        </div>
+
+        <div className="modal-footer">
+          <div className="modal-meta">
+            <span>Saved on {formatDate(item.createdAt)}</span>
+            {item.chunkCount > 0 && <span className="chunk-badge">{item.chunkCount} chunks</span>}
+            {item.sourceUrl && (
+              <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" className="item-url-link">
+                ↗ {item.sourceUrl}
+              </a>
+            )}
+          </div>
+          <button className="btn btn-ghost" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ItemCard({ item, onOpenModal }: { item: ItemSummary; onOpenModal: (item: ItemSummary) => void }) {
+  if (item.status === 'processing') {
+    return <SkeletonCard />;
+  }
+
   return (
     <article className="item-card animate-in">
-      <div className="item-card-header">
+      <div className="item-card-top">
         <span className={`item-type-badge ${item.sourceType === 'note' ? 'badge-note' : 'badge-url'}`}>
-          {item.sourceType === 'note' ? '📝 Note' : '🔗 URL'}
+          {item.sourceType === 'note' ? 'Note' : 'URL'}
         </span>
         <div className="item-title">{item.title}</div>
         <StatusBadge status={item.status} />
       </div>
 
       {item.preview && (
-        <p className="item-preview">{item.preview}</p>
+        <div
+          className="item-preview"
+          onClick={() => onOpenModal(item)}
+          title="Click to view full text in centered card"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpenModal(item); }}
+        >
+          {item.preview}
+        </div>
+      )}
+
+      {item.status === 'ready' && (
+        <button
+          className="item-expand-btn"
+          onClick={() => onOpenModal(item)}
+          aria-label={`Read full ${item.sourceType}`}
+        >
+          Expand note ↗
+        </button>
       )}
 
       {item.errorMessage && (
         <div className="item-error" role="alert">
-          ⚠️ {item.errorMessage}
+          {item.errorMessage}
         </div>
       )}
 
       <div className="item-meta">
         <span>{formatDate(item.createdAt)}</span>
         {item.status === 'ready' && item.chunkCount > 0 && (
-          <span className="chunk-badge">{item.chunkCount} chunks</span>
+          <span className="chunk-badge">{item.chunkCount}c</span>
         )}
         {item.sourceUrl && (
           <a
@@ -58,7 +143,7 @@ function ItemCard({ item }: { item: ItemSummary }) {
             className="item-url-link"
             title={item.sourceUrl}
           >
-            ↗ {new URL(item.sourceUrl).hostname}
+            {new URL(item.sourceUrl).hostname}
           </a>
         )}
       </div>
@@ -66,61 +151,95 @@ function ItemCard({ item }: { item: ItemSummary }) {
   );
 }
 
-export function ItemsPanel() {
-  const { data, isLoading, error, refetch } = useItems();
+export function ItemsPanel({ onCloseSidebar }: { onCloseSidebar?: () => void }) {
+  const { data, isLoading, isFetching, error, refetch } = useItems();
+  const [selectedItem, setSelectedItem] = useState<ItemSummary | null>(null);
 
   return (
-    <div className="panel" style={{ marginTop: '20px' }}>
-      <div className="panel-header">
-        <div className="panel-icon">📚</div>
-        <span className="panel-title">Saved Knowledge</span>
-        {data && (
-          <span className="chunk-badge" style={{ marginLeft: 'auto' }}>
-            {data.items.length} item{data.items.length !== 1 ? 's' : ''}
-          </span>
+    <>
+      <div className="sidebar-header">
+        <span className="sidebar-title">Library</span>
+        
+        <div className="sidebar-cluster">
+          {data && (
+            <span className="sidebar-count">
+              {data.items.length}
+            </span>
+          )}
+          <button
+            onClick={() => refetch()}
+            className={`sidebar-refresh${isFetching ? ' refreshing' : ''}`}
+            disabled={isFetching}
+            title="Refresh library"
+            aria-label="Refresh saved items"
+          >
+            ↻
+          </button>
+        </div>
+
+        {onCloseSidebar && (
+          <button
+            onClick={onCloseSidebar}
+            className="sidebar-close-btn"
+            aria-label="Close library"
+          >
+            ×
+          </button>
         )}
-        <button
-          onClick={() => refetch()}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '14px', marginLeft: data ? '0' : 'auto', padding: '4px' }}
-          title="Refresh list"
-          aria-label="Refresh saved items"
-        >
-          ↻
-        </button>
       </div>
-      <div className="panel-body">
+
+      <div className="sidebar-body" role="list" aria-label="Saved knowledge items">
         {isLoading && (
-          <div className="empty-state">
-            <div className="spinner" style={{ margin: '0 auto 12px', width: '24px', height: '24px' }} aria-label="Loading" />
-            <p>Loading saved items…</p>
+          <div className="items-loading">
+            <span className="spinner spinner-ink" aria-label="Loading" />
+            <span>Loading…</span>
           </div>
         )}
 
         {error && (
           <div className="alert alert-error" role="alert">
-            <span>⚠️</span>
-            <span>Failed to load items. <button onClick={() => refetch()} style={{ color: 'var(--error)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Retry</button></span>
+            <span className="alert-icon">⚠️</span>
+            <span className="alert-text">
+              Failed to load.
+              <button
+                onClick={() => refetch()}
+                style={{
+                  color: 'var(--error)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  fontFamily: 'inherit',
+                  fontSize: 'inherit',
+                  padding: 0,
+                }}
+              >
+                Retry
+              </button>
+            </span>
           </div>
         )}
 
         {data && data.items.length === 0 && (
           <div className="empty-state">
             <div className="empty-state-icon">📭</div>
-            <h3>No saved items yet</h3>
-            <p>Add notes or URLs above to build your knowledge base.</p>
+            <p className="empty-state-title">No items yet</p>
+            <p className="empty-state-body">
+              Add a note or URL to start building your knowledge base.
+            </p>
           </div>
         )}
 
-        {data && data.items.length > 0 && (
-          <div className="items-list" role="list" aria-label="Saved knowledge items">
-            {data.items.map((item) => (
-              <div key={item.id} role="listitem">
-                <ItemCard item={item} />
-              </div>
-            ))}
+        {data && data.items.map((item) => (
+          <div key={item.id} role="listitem">
+            <ItemCard item={item} onOpenModal={setSelectedItem} />
           </div>
-        )}
+        ))}
       </div>
-    </div>
+
+      {selectedItem && (
+        <NoteModal item={selectedItem} onClose={() => setSelectedItem(null)} />
+      )}
+    </>
   );
 }
