@@ -24,6 +24,9 @@ services:
         value: "*"
 
   # ── 2. Frontend React / Vite Static Site (Free Tier) ────────────────────────
+  # NOTE: VITE_API_URL must be the full https:// URL of the API service.
+  # Render's fromService.property:host only returns a bare hostname (no protocol),
+  # but Vite bakes this value at BUILD time, so we set it explicitly here.
   - type: web
     name: ai-knowledge-inbox-web
     env: static
@@ -36,7 +39,4 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: ai-knowledge-inbox-api
-          property: host
+        value: https://ai-knowledge-inbox-api.onrender.com

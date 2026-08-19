@@ -6,7 +6,9 @@ import {
   QueryResponse,
 } from '@ai-inbox/contracts';
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? '';
+const rawApiUrl: string = import.meta.env.VITE_API_URL ?? '';
+// Ensure BASE_URL always has a protocol (Render's fromService.property:host omits https://)
+const BASE_URL = rawApiUrl && !rawApiUrl.startsWith('http') ? `https://${rawApiUrl}` : rawApiUrl;
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
