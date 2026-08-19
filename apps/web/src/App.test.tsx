@@ -31,7 +31,7 @@ global.fetch = vi.fn().mockImplementation(async (url: string) => {
 });
 
 describe('App', () => {
-  it('renders header, ingestion form, saved items, and question input', async () => {
+  it('renders header, add content button, library, and question centerpiece', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -43,8 +43,8 @@ describe('App', () => {
     );
 
     expect(screen.getByRole('heading', { name: /AI Knowledge Inbox/i })).toBeInTheDocument();
-    expect(screen.getByText(/Add to Knowledge Base/i)).toBeInTheDocument();
-    expect(screen.getByText(/Ask a Question/i)).toBeInTheDocument();
-    expect(screen.getByText(/Saved Knowledge/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add content/i })).toBeInTheDocument();
+    expect(screen.getByText(/What do you want to know/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Library/i).length).toBeGreaterThan(0);
   });
 });
