@@ -15,9 +15,10 @@ Follow these step-by-step instructions to get the application running locally on
 
 - **Node.js**: `v20.0.0` or higher (tested on Node v20 and v24)
 - **npm**: `v9.0.0` or higher
-- **API Key**: Required for vector embeddings and chat completions. You can use **EITHER**:
-  - 🟢 **Google Gemini API Key (`GEMINI_API_KEY`)** — *Recommended* (Free tier friendly)
-  - 🔵 **OpenAI API Key (`OPENAI_API_KEY`)**
+- **API Key**: Required for vector embeddings and chat completions. You can use **any of**:
+  - 🟢 **Google Gemini API Key (`GEMINI_API_KEY`)** — *Recommended* (Free tier, handles both chat + embeddings)
+  - 🔵 **OpenAI API Key (`OPENAI_API_KEY`)** — Handles both chat + embeddings
+  - ⚡ **Groq API Key (`GROQ_API_KEY`)** — Ultra-fast Llama 3.3 inference, **requires Gemini or OpenAI key for embeddings**
 
 ---
 
@@ -47,7 +48,7 @@ Create the `.env` file for the API backend by copying the template:
 cp apps/api/.env.example apps/api/.env
 ```
 
-Open `apps/api/.env` and insert your **Google Gemini API Key** or **OpenAI API Key**:
+Open `apps/api/.env` and insert your API key(s):
 
 #### Option A: Using Google Gemini (Recommended)
 ```env
@@ -61,7 +62,14 @@ OPENAI_API_KEY=sk-your-openai-api-key-here
 AI_PROVIDER=auto
 ```
 
-*(Note: The system automatically detects which API key is present and routes to the appropriate model provider — `gemini-embedding-001` + `gemini-3.6-flash` for Gemini, or `text-embedding-3-small` + `gpt-4o-mini` for OpenAI).*
+#### Option C: Using Groq for Chat + Gemini for Embeddings (Fastest inference)
+```env
+GROQ_API_KEY=gsk_your-groq-api-key-here
+GEMINI_API_KEY=your-gemini-api-key-here
+AI_PROVIDER=auto
+```
+
+*(Note: The system automatically detects which keys are present and routes accordingly — `AI_PROVIDER=auto` prefers Groq > Gemini > OpenAI for chat. Groq does not support embeddings so a Gemini or OpenAI key is also required when using Groq.)*
 
 ---
 
@@ -131,10 +139,11 @@ npm run build
 
 ## 🧠 Design Decisions & Tradeoffs
 
-### 1. Dual AI Provider Abstraction (Google Gemini + OpenAI)
-- **Decision**: Supports both **Google Gemini** (`GEMINI_API_KEY`) and **OpenAI** (`OPENAI_API_KEY`) out of the box with zero code changes needed by the end user.
-- **Rationale**: Gives users flexibility and access to generous free-tier quotas (Gemini API) without requiring paid OpenAI credits.
-- **Tradeoff**: Model-specific API endpoints (e.g. Gemini batch embedding vs OpenAI embedding array) are encapsulated inside `src/adapters/aiClient.ts`.
+### 1. Triple AI Provider Abstraction (Groq + Gemini + OpenAI)
+- **Decision**: Supports **Groq** (`GROQ_API_KEY`), **Google Gemini** (`GEMINI_API_KEY`), and **OpenAI** (`OPENAI_API_KEY`) with zero code changes.
+- **Rationale**: Groq provides extremely low-latency Llama 3.3 inference (free tier, ~10× faster than OpenAI). Gemini offers generous free-tier quotas for both embeddings and chat. OpenAI covers users who already have existing credits.
+- **Provider Split**: Groq handles **chat completions only** (it has no embedding API). When `GROQ_API_KEY` is active, embeddings automatically fall back to Gemini or OpenAI. All routing logic is encapsulated in `src/adapters/aiClient.ts`.
+- **Auto-Detection Priority**: `AI_PROVIDER=auto` resolves as Groq → Gemini → OpenAI based on which keys are present.
 
 ---
 

@@ -28,10 +28,11 @@ const ConfigSchema = z
     // SQLite
     SQLITE_PATH: z.string().default('./data/knowledge.db'),
 
-    // AI Provider Configuration (Gemini or OpenAI)
-    AI_PROVIDER: z.enum(['openai', 'gemini', 'auto']).default('auto'),
+    // AI Provider Configuration (Gemini, OpenAI, or Groq)
+    AI_PROVIDER: z.enum(['openai', 'gemini', 'groq', 'auto']).default('auto'),
     GEMINI_API_KEY: z.string().optional(),
     OPENAI_API_KEY: z.string().optional(),
+    GROQ_API_KEY: z.string().optional(),
     OPENAI_BASE_URL: z.string().url().optional(),
 
     // Model names
@@ -61,18 +62,32 @@ const ConfigSchema = z
     LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   })
   .refine(
-    (data) => Boolean(data.GEMINI_API_KEY || data.OPENAI_API_KEY),
+    (data) => Boolean(data.GEMINI_API_KEY || data.OPENAI_API_KEY || data.GROQ_API_KEY),
     {
-      message: 'Either GEMINI_API_KEY or OPENAI_API_KEY must be provided in environment variables or .env file.',
+      message:
+        'At least one API key must be provided: GEMINI_API_KEY, OPENAI_API_KEY, or GROQ_API_KEY.',
       path: ['GEMINI_API_KEY'],
     },
+  )
+  .refine(
+    (data) => {
+      // If only GROQ_API_KEY is provided, embeddings won't work — warn but allow startup
+      const chatProvider = data.AI_PROVIDER === 'groq' || (data.AI_PROVIDER === 'auto' && data.GROQ_API_KEY && !data.GEMINI_API_KEY && !data.OPENAI_API_KEY);
+      if (chatProvider) return true; // Allow startup, embeddings will fail at runtime with helpful message
+      return true;
+    },
+    { message: '', path: [] },
   );
 
 type RawConfig = z.infer<typeof ConfigSchema>;
 
 export interface ResolvedConfig extends Omit<RawConfig, 'EMBEDDING_MODEL' | 'CHAT_MODEL'> {
-  provider: 'gemini' | 'openai';
+  /** The chat completion provider */
+  provider: 'gemini' | 'openai' | 'groq';
+  /** The embedding provider (may differ from provider when using Groq for chat) */
+  embeddingProvider: 'gemini' | 'openai';
   apiKey: string;
+  groqApiKey?: string;
   baseUrl?: string;
   embeddingModel: string;
   chatModel: string;
@@ -88,23 +103,44 @@ function loadConfig(): ResolvedConfig {
 
   const raw = result.data;
 
-  // Determine provider
-  let provider: 'gemini' | 'openai' = 'gemini';
-  if (raw.AI_PROVIDER === 'openai') {
+  // ── Determine chat provider ──────────────────────────────────────────────
+  let provider: 'gemini' | 'openai' | 'groq';
+  if (raw.AI_PROVIDER === 'groq') {
+    provider = 'groq';
+  } else if (raw.AI_PROVIDER === 'openai') {
     provider = 'openai';
   } else if (raw.AI_PROVIDER === 'gemini') {
     provider = 'gemini';
   } else {
-    // auto: prefer Gemini if GEMINI_API_KEY is present, else OpenAI
-    provider = raw.GEMINI_API_KEY ? 'gemini' : 'openai';
+    // auto: Groq > Gemini > OpenAI
+    if (raw.GROQ_API_KEY) provider = 'groq';
+    else if (raw.GEMINI_API_KEY) provider = 'gemini';
+    else provider = 'openai';
   }
 
+  // ── Determine embedding provider (Groq has no embedding API) ────────────
+  let embeddingProvider: 'gemini' | 'openai';
+  if (provider === 'groq') {
+    // Fall back to Gemini or OpenAI for embeddings
+    embeddingProvider = raw.GEMINI_API_KEY ? 'gemini' : 'openai';
+  } else {
+    embeddingProvider = provider as 'gemini' | 'openai';
+  }
+
+  // ── Resolve API keys and base URLs ───────────────────────────────────────
   let apiKey = '';
-  let baseUrl = raw.OPENAI_BASE_URL;
+  let baseUrl: string | undefined = raw.OPENAI_BASE_URL;
   let defaultEmbeddingModel = 'text-embedding-3-small';
   let defaultChatModel = 'gpt-4o-mini';
 
-  if (provider === 'gemini') {
+  if (provider === 'groq') {
+    apiKey = raw.GROQ_API_KEY || '';
+    baseUrl = 'https://api.groq.com/openai/v1';
+    defaultChatModel = 'openai/gpt-oss-120b';
+    // Embedding model depends on fallback provider
+    defaultEmbeddingModel =
+      embeddingProvider === 'gemini' ? 'gemini-embedding-001' : 'text-embedding-3-small';
+  } else if (provider === 'gemini') {
     apiKey = raw.GEMINI_API_KEY || raw.OPENAI_API_KEY || '';
     baseUrl = raw.OPENAI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai/';
     defaultEmbeddingModel = 'gemini-embedding-001';
@@ -118,7 +154,9 @@ function loadConfig(): ResolvedConfig {
   return {
     ...raw,
     provider,
+    embeddingProvider,
     apiKey,
+    groqApiKey: raw.GROQ_API_KEY,
     baseUrl,
     embeddingModel: raw.EMBEDDING_MODEL || defaultEmbeddingModel,
     chatModel: raw.CHAT_MODEL || defaultChatModel,

@@ -3,6 +3,7 @@ import { config } from '../config/index.js';
 import { logger } from '../config/logger.js';
 import { ProviderError, ProviderTimeoutError } from '../domain/index.js';
 
+// ── OpenAI / Gemini-compat client (used for chat when provider=gemini/openai) ──
 let _client: OpenAI | null = null;
 
 function getClient(): OpenAI {
@@ -17,11 +18,58 @@ function getClient(): OpenAI {
       event: 'ai_client_initialized',
       provider: config.provider,
       baseUrl: config.baseUrl ?? 'default',
+      embeddingProvider: config.embeddingProvider,
       embeddingModel: config.embeddingModel,
       chatModel: config.chatModel,
     });
   }
   return _client;
+}
+
+// ── Groq client (OpenAI-compatible, chat only — no embeddings) ──────────────
+let _groqClient: OpenAI | null = null;
+
+function getGroqClient(): OpenAI {
+  if (!_groqClient) {
+    _groqClient = new OpenAI({
+      apiKey: config.groqApiKey ?? '',
+      baseURL: 'https://api.groq.com/openai/v1',
+      timeout: config.FETCH_TIMEOUT_MS * 3,
+      maxRetries: 2,
+    });
+    logger.info({
+      event: 'ai_client_initialized',
+      provider: 'groq',
+      baseUrl: 'https://api.groq.com/openai/v1',
+      embeddingProvider: config.embeddingProvider,
+      embeddingModel: config.embeddingModel,
+      chatModel: config.chatModel,
+    });
+  }
+  return _groqClient;
+}
+
+// ── Embedding client: resolves to Gemini or OpenAI (never Groq) ─────────────
+let _embeddingClient: OpenAI | null = null;
+
+function getEmbeddingClient(): OpenAI {
+  if (config.provider !== 'groq') {
+    // Chat and embedding provider are the same
+    return getClient();
+  }
+  // Groq: use a separate client pointed at the embedding provider (Gemini or OpenAI)
+  if (!_embeddingClient) {
+    const isGemini = config.embeddingProvider === 'gemini';
+    _embeddingClient = new OpenAI({
+      apiKey: isGemini ? (config.GEMINI_API_KEY ?? '') : (config.OPENAI_API_KEY ?? ''),
+      baseURL: isGemini
+        ? 'https://generativelanguage.googleapis.com/v1beta/openai/'
+        : undefined,
+      timeout: config.FETCH_TIMEOUT_MS * 3,
+      maxRetries: 2,
+    });
+  }
+  return _embeddingClient;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -45,12 +93,10 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
   throw lastError;
 }
 
-async function createGeminiEmbeddings(texts: string[]): Promise<number[][]> {
-  const modelName = config.embeddingModel.startsWith('models/')
-    ? config.embeddingModel
-    : `models/${config.embeddingModel}`;
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/${modelName}:batchEmbedContents?key=${config.apiKey}`;
+// ── Gemini-native batchEmbedContents (bypasses OpenAI-compat endpoint) ──────
+async function createGeminiEmbeddings(texts: string[], apiKey: string, model: string): Promise<number[][]> {
+  const modelName = model.startsWith('models/') ? model : `models/${model}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/${modelName}:batchEmbedContents?key=${apiKey}`;
 
   const requests = texts.map((t) => ({
     model: modelName,
@@ -76,14 +122,19 @@ async function createGeminiEmbeddings(texts: string[]): Promise<number[][]> {
   return data.embeddings.map((e) => e.values);
 }
 
+// ── Public: create embeddings ────────────────────────────────────────────────
 export async function createEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
   try {
     const embeddings = await withRetry(async () => {
-      if (config.provider === 'gemini') {
-        return await createGeminiEmbeddings(texts);
+      if (config.embeddingProvider === 'gemini') {
+        // Use Gemini native API; resolve the key: could be GEMINI_API_KEY or the main apiKey
+        const geminiKey = config.GEMINI_API_KEY ?? config.apiKey;
+        return await createGeminiEmbeddings(texts, geminiKey, config.embeddingModel);
       } else {
-        const result = await getClient().embeddings.create({
+        // OpenAI-compatible embedding (openai provider, or Groq→OpenAI fallback)
+        const client = getEmbeddingClient();
+        const result = await client.embeddings.create({
           model: config.embeddingModel,
           input: texts,
         });
@@ -91,24 +142,31 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
       }
     });
 
-    logger.debug({ event: 'embeddings_created', count: texts.length, model: config.embeddingModel, provider: config.provider });
+    logger.debug({
+      event: 'embeddings_created',
+      count: texts.length,
+      model: config.embeddingModel,
+      embeddingProvider: config.embeddingProvider,
+    });
     return embeddings;
   } catch (err: unknown) {
     const e = err as { code?: string; message?: string };
     if (e.code === 'ETIMEDOUT' || e.code === 'ECONNABORTED') {
-      throw new ProviderTimeoutError(`${config.provider.toUpperCase()} embedding provider timed out`);
+      throw new ProviderTimeoutError(`${config.embeddingProvider.toUpperCase()} embedding provider timed out`);
     }
-    throw new ProviderError(`${config.provider.toUpperCase()} embedding failed: ${e.message ?? 'unknown error'}`);
+    throw new ProviderError(`${config.embeddingProvider.toUpperCase()} embedding failed: ${e.message ?? 'unknown error'}`);
   }
 }
 
+// ── Public: create chat completion ───────────────────────────────────────────
 export async function createChatCompletion(
   systemPrompt: string,
   userMessage: string,
 ): Promise<string> {
   try {
+    const client = config.provider === 'groq' ? getGroqClient() : getClient();
     const result = await withRetry(() =>
-      getClient().chat.completions.create({
+      client.chat.completions.create({
         model: config.chatModel,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -119,7 +177,12 @@ export async function createChatCompletion(
       }),
     );
     const content = result.choices[0]?.message?.content ?? '';
-    logger.debug({ event: 'chat_completion', model: config.chatModel, provider: config.provider, tokens: result.usage?.total_tokens });
+    logger.debug({
+      event: 'chat_completion',
+      model: config.chatModel,
+      provider: config.provider,
+      tokens: result.usage?.total_tokens,
+    });
     return content;
   } catch (err: unknown) {
     const e = err as { code?: string; message?: string };
