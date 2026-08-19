@@ -1,0 +1,22 @@
+{
+  "name": "ai-knowledge-inbox",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev --workspace=@ai-inbox/api",
+    "dev:web": "npm run dev --workspace=@ai-inbox/web",
+    "dev": "concurrently -k -n API,WEB -c indigo,cyan \"npm:dev:api\" \"npm:dev:web\"",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
