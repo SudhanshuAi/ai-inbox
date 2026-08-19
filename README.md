@@ -292,6 +292,3 @@ Performs semantic search across indexed chunks and generates grounded answers wi
 4. **Hybrid Retrieval**: Combine dense vector search with sparse keyword search (**BM25**) and cross-encoder reranking (**Cohere Rerank**).
 
 ---
-
-## 📄 License
-MIT License
