@@ -269,25 +269,34 @@ Performs semantic search across indexed chunks and generates grounded answers wi
 
 ## 🌐 Free-Tier Cloud Deployment Guide
 
-### Backend API Deployment (Render Free Web Service)
-1. Push code to GitHub and connect repository in [Render](https://render.com).
-2. Set **Root Directory**: `apps/api`
-3. Set **Build Command**: `npm install && npm run build`
-4. Set **Start Command**: `node dist/index.js`
-5. Configure Environment Variables:
-   - `NODE_ENV`: `production`
-   - `GEMINI_API_KEY`: `your-gemini-api-key` (or `OPENAI_API_KEY`)
-   - `SQLITE_PATH`: `/data/knowledge.db`
-   - `FRONTEND_ORIGIN`: `https://your-app.vercel.app`
-6. Add a **Persistent Disk** mounted at `/data` (1GB).
+You can deploy **BOTH** the backend API and frontend Web app on **Render** (100% Render stack), or use **Render + Vercel**.
 
-### Frontend Deployment (Vercel Free Hobby Plan)
-1. Import repository in [Vercel](https://vercel.com).
-2. Set **Root Directory**: `apps/web`
-3. Framework Preset: `Vite`
-4. Set Environment Variable:
-   - `VITE_API_URL`: `https://your-backend-api.onrender.com`
-5. Deploy.
+### Option A: 100% Render Deployment (Recommended)
+This repository includes a [`render.yaml`](file:///c:/ai-inbox/ai-knowledge-inbox/render.yaml) Blueprint that automatically provisions **both** services on Render's Free Tier with a single click:
+
+1. Push your code to GitHub.
+2. Go to [Render Dashboard Blueprint](https://dashboard.render.com/select-repo?type=blueprint) and connect your repository.
+3. Render will automatically detect `render.yaml` and create:
+   - 🟢 `ai-knowledge-inbox-api` (Express Web Service + 1GB SQLite disk)
+   - 🔵 `ai-knowledge-inbox-web` (React Static Site with automatic SPA rewrite rules)
+4. When prompted, enter your `GEMINI_API_KEY` (or `OPENAI_API_KEY`).
+5. Click **Apply**. Both services will build and deploy automatically!
+
+---
+
+### Option B: Render (Backend API) + Vercel (Frontend SPA)
+
+#### 1. Backend API Deployment (Render Free Web Service)
+- Create a **Web Service** on Render connected to `apps/api`.
+- Build Command: `npm install && npm run build`
+- Start Command: `node dist/index.js`
+- Env Vars: `NODE_ENV=production`, `GEMINI_API_KEY=your-key`, `SQLITE_PATH=/data/knowledge.db`
+- Add a **Persistent Disk** mounted at `/data` (1GB).
+
+#### 2. Frontend Deployment (Vercel Free Hobby Plan)
+- Import repository into Vercel with **Root Directory**: `apps/web`.
+- Set Env Var: `VITE_API_URL=https://your-api.onrender.com`.
+- Click **Deploy**.
 
 ---
 
